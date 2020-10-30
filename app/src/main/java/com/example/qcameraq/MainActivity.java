@@ -218,20 +218,20 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 try {
                     Log.e(TAG, "onLongClick: btn_cap");
                     camera.setMode(Mode.VIDEO);
-                    camera.takeVideo(videoDir, 6000);
+                    camera.takeVideo(videoDir);
                     handler.postDelayed(updateTimerThread, 0);
                 } catch(Exception e){
                     e.printStackTrace();
                     Log.e(TAG, "onLongClick: Video Error");
                 }
+                tv_Grid.setVisibility(View.INVISIBLE);
                 btn_rotate.setVisibility(View.INVISIBLE);
                 btn_flash.setVisibility(View.INVISIBLE);
                 tv_Holdtap.setVisibility(View.INVISIBLE);
                 tv_timer.setVisibility(View.VISIBLE);
 
-
                 try{
-                    scaleUpAnimation();
+                    handler.postDelayed(scaleUpAnimation, 100);
                 } catch (Exception e){
                     Log.e(TAG, "onLongClick: scaleUpAnimation()");
                 }
@@ -241,15 +241,16 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     public boolean onTouch(View view, MotionEvent motionEvent) {
                         if(motionEvent.getAction() == MotionEvent.ACTION_BUTTON_PRESS){
                             Log.e(TAG, "onTouch: ACTION_BUTTON_PRESS");
-                            capturePicture();;
+                            capturePicture();
                         }
                         if(motionEvent.getAction() == MotionEvent.ACTION_UP){
                             Log.e(TAG, "onTouch: ACTION_UP");
                             camera.stopVideo();
-                            scaleDownAnimation();
+                            handler.postDelayed(scaleDownAnimation, 100);
 
                             tv_timer.setVisibility(View.INVISIBLE);
 
+                            tv_Grid.setVisibility(View.VISIBLE);
                             btn_flash.setVisibility(View.VISIBLE);
                             btn_rotate.setVisibility(View.VISIBLE);
                             tv_Holdtap.setVisibility(View.VISIBLE);
@@ -290,7 +291,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private Runnable updateTimerThread = new Runnable() {
         public void run() {
-
             timeInMilliseconds = SystemClock.uptimeMillis() - startTime;
             updatedTime = timeSwapBuff + timeInMilliseconds;
 
@@ -301,7 +301,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             secs = secs % 60;
             tv_timer.setText(String.format("%02d", mins) + ":" + String.format("%02d", secs));
             handler.postDelayed(this, 0);
-
         }
     };
 
@@ -409,42 +408,48 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         camera.takeVideo(videoDir);
     }
 
-    private void scaleUpAnimation() {
-        ObjectAnimator scaleDownX = ObjectAnimator.ofFloat(btn_cap, "scaleX", 1f);
-        ObjectAnimator scaleDownY = ObjectAnimator.ofFloat(btn_cap, "scaleY", 1f);
-        scaleDownX.setDuration(100);
-        scaleDownY.setDuration(100);
-        AnimatorSet scaleDown = new AnimatorSet();
-        scaleDown.play(scaleDownX).with(scaleDownY);
+    private Runnable scaleUpAnimation = new Runnable() {
+        @Override
+        public void run() {
+            ObjectAnimator scaleDownX = ObjectAnimator.ofFloat(btn_cap, "scaleX", 1f);
+            ObjectAnimator scaleDownY = ObjectAnimator.ofFloat(btn_cap, "scaleY", 1f);
+            scaleDownX.setDuration(100);
+            scaleDownY.setDuration(100);
+            AnimatorSet scaleDown = new AnimatorSet();
+            scaleDown.play(scaleDownX).with(scaleDownY);
 
-        scaleDownX.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
-            @Override
-            public void onAnimationUpdate(ValueAnimator valueAnimator) {
-                View p = (View) btn_cap.getParent();
-                p.invalidate();
-            }
-        });
-        scaleDown.start();
-    }
+            scaleDownX.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                @Override
+                public void onAnimationUpdate(ValueAnimator valueAnimator) {
+                    View p = (View) btn_cap.getParent();
+                    p.invalidate();
+                }
+            });
+            scaleDown.start();
+        }
+    };
 
-    private void scaleDownAnimation() {
-        Object target;
-        ObjectAnimator scaleDownX = ObjectAnimator.ofFloat(btn_cap, "scaleX", 1f);
-        ObjectAnimator scaleDownY = ObjectAnimator.ofFloat(btn_cap, "scaleY", 1f);
-        scaleDownX.setDuration(100);
-        scaleDownY.setDuration(100);
-        AnimatorSet scaleDown = new AnimatorSet();
-        scaleDown.play(scaleDownX).with(scaleDownY);
+    private Runnable scaleDownAnimation = new Runnable() {
+        @Override
+        public void run() {
+            Object target;
+            ObjectAnimator scaleDownX = ObjectAnimator.ofFloat(btn_cap, "scaleX", 1f);
+            ObjectAnimator scaleDownY = ObjectAnimator.ofFloat(btn_cap, "scaleY", 1f);
+            scaleDownX.setDuration(100);
+            scaleDownY.setDuration(100);
+            AnimatorSet scaleDown = new AnimatorSet();
+            scaleDown.play(scaleDownX).with(scaleDownY);
 
-        scaleDownX.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
-            @Override
-            public void onAnimationUpdate(ValueAnimator valueAnimator) {
-                View p = (View) btn_cap.getParent();
-                p.invalidate();
-            }
-        });
-        scaleDown.start();
-    }
+            scaleDownX.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                @Override
+                public void onAnimationUpdate(ValueAnimator valueAnimator) {
+                    View p = (View) btn_cap.getParent();
+                    p.invalidate();
+                }
+            });
+            scaleDown.start();
+        }
+    };
 
     private void allPermissionGranted(int requestCode, String[] REQUIRED_PERMISSIONS){
         for(String permission : REQUIRED_PERMISSIONS){
