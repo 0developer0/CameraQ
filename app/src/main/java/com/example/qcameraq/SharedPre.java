@@ -39,8 +39,17 @@ public class SharedPre {
     grid == 2 => 4*4
     grid == 3 => Grid Phi
      */
-    public void setGrid(int Grid){
-        editor.putInt("grid", Grid);
+    public void setGrid(int grid){
+        editor.putInt("grid", grid);
+        editor.apply();
+    }
+
+    /*
+    hdr == false => Off
+    hdr == true => On
+     */
+    public void setHdr(boolean hdr){
+        editor.putBoolean("hdr", hdr);
         editor.apply();
     }
 
@@ -53,4 +62,6 @@ public class SharedPre {
     }
 
     public int getGrid() { return sharedPreferences.getInt("grid", 0); }
+
+    public boolean getHdr() { return sharedPreferences.getBoolean("hdr", false); }
 }

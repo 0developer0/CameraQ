@@ -11,10 +11,8 @@ import androidx.recyclerview.widget.RecyclerView;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
-import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.PointF;
 import android.os.Bundle;
 import android.os.Environment;
@@ -25,21 +23,21 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
+import android.widget.Button;
 import android.widget.ImageView;
-import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import com.otaliastudios.cameraview.CameraException;
 import com.otaliastudios.cameraview.CameraListener;
 import com.otaliastudios.cameraview.CameraLogger;
-import com.otaliastudios.cameraview.CameraOptions;
 import com.otaliastudios.cameraview.CameraView;
 import com.otaliastudios.cameraview.PictureResult;
 import com.otaliastudios.cameraview.VideoResult;
 import com.otaliastudios.cameraview.controls.Facing;
 import com.otaliastudios.cameraview.controls.Flash;
 import com.otaliastudios.cameraview.controls.Grid;
+import com.otaliastudios.cameraview.controls.Hdr;
 import com.otaliastudios.cameraview.controls.Mode;
 import com.otaliastudios.cameraview.controls.PictureFormat;
 
@@ -78,13 +76,13 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             updatedTime = 0L,
             timeSwapBuff = 0L;
 
-    private ImageView btn_cap, btn_rotate, btn_flash;
-    private TextView tv_timer, tv_Grid;
+
+    private ImageView btn_cap, btn_rotate, btn_flash, btn_Grid, btn_Hdr;
+    private TextView tv_timer, tv_Holdtap;
+    private RecyclerView rv_gallery;
 
     private CameraView camera;
-    private TextView tv_Holdtap;
 
-    private RecyclerView rv_gallery;
     private Bitmap bitmap;
 //    private SharedPre sharedPre;
 
@@ -181,7 +179,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         btn_cap = findViewById(R.id.btn_main_capture);
         btn_rotate = findViewById(R.id.btn_main_rotate);
         btn_flash = findViewById(R.id.btn_main_flash);
-        tv_Grid = findViewById(R.id.tv_main_grid);
+        btn_Grid = findViewById(R.id.btn_main_grid);
+        btn_Hdr = findViewById(R.id.btn_main_hdr);
 
         tv_timer = findViewById(R.id.tv_main_timer);
         tv_Holdtap = findViewById(R.id.tv_main_holdtap);
@@ -202,7 +201,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         
         btn_flash.setOnClickListener(this);
         btn_rotate.setOnClickListener(this);
-        tv_Grid.setOnClickListener(this);
+        btn_Grid.setOnClickListener(this);
+        btn_Hdr.setOnClickListener(this);
 
         rv_gallery.setLayoutManager(new LinearLayoutManager(this, RecyclerView.HORIZONTAL,
                 false));
@@ -224,7 +224,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     e.printStackTrace();
                     Log.e(TAG, "onLongClick: Video Error");
                 }
-                tv_Grid.setVisibility(View.INVISIBLE);
+                btn_Grid.setVisibility(View.INVISIBLE);
                 btn_rotate.setVisibility(View.INVISIBLE);
                 btn_flash.setVisibility(View.INVISIBLE);
                 tv_Holdtap.setVisibility(View.INVISIBLE);
@@ -250,7 +250,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
                             tv_timer.setVisibility(View.INVISIBLE);
 
-                            tv_Grid.setVisibility(View.VISIBLE);
+                            btn_Grid.setVisibility(View.VISIBLE);
                             btn_flash.setVisibility(View.VISIBLE);
                             btn_rotate.setVisibility(View.VISIBLE);
                             tv_Holdtap.setVisibility(View.VISIBLE);
@@ -282,14 +282,28 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             case R.id.btn_main_flash:
                 flash();
                 break;
-            case R.id.tv_main_grid:
-                changeGrid();
+            case R.id.btn_main_grid:
+                grid();
+                break;
+            case R.id.btn_main_hdr:
+                hdr();
                 break;
         }
-        return;
     }
 
-    private Runnable updateTimerThread = new Runnable() {
+    private void hdr() {
+        if(camera.getHdr() == Hdr.ON){
+            camera.setHdr(Hdr.OFF);
+            btn_Hdr.setBackgroundResource(R.drawable.hdr_off_24dp);
+            Log.e(TAG, "hdr: Off");
+        } else{
+            camera.setHdr(Hdr.ON);
+            btn_Hdr.setBackgroundResource(R.drawable.hdr_on_24dp);
+            Log.e(TAG, "hdr: On");
+        }
+    }
+
+    private final Runnable updateTimerThread = new Runnable() {
         public void run() {
             timeInMilliseconds = SystemClock.uptimeMillis() - startTime;
             updatedTime = timeSwapBuff + timeInMilliseconds;
@@ -298,7 +312,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             int mins = secs / 60;
             int hrs = mins / 60;
 
-            secs = secs % 60;
+            secs %= 60;
             tv_timer.setText(String.format("%02d", mins) + ":" + String.format("%02d", secs));
             handler.postDelayed(this, 0);
         }
@@ -323,7 +337,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 Log.e(TAG, "rotateCamera: Front");
                 break;
         }
-        return;
     }
 
     private void flash() {
@@ -331,56 +344,42 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         switch (camera.getFlash()) {
             case ON:
                 camera.setFlash(Flash.AUTO);
-                btn_flash.setBackgroundResource(R.drawable.flash_auto_48px);
+                btn_flash.setBackgroundResource(R.drawable.ic_baseline_flash_auto_24);
 //                sharedPre.setFlash(2);
                 Log.e(TAG, "flash: Auto");
                 break;
             case AUTO:
                 camera.setFlash(Flash.OFF);
-                btn_flash.setBackgroundResource(R.drawable.flash_off_48px);
+                btn_flash.setBackgroundResource(R.drawable.ic_baseline_flash_off_24);
 //                sharedPre.setFlash(0);
                 Log.e(TAG, "flash: Off");
                 break;
             case OFF:
                 camera.setFlash(Flash.ON);
-                btn_flash.setBackgroundResource(R.drawable.flash_on_48px);
+                btn_flash.setBackgroundResource(R.drawable.ic_baseline_flash_on_24);
 //                sharedPre.setFlash(1);
                 Log.e(TAG, "flash: On");
                 break;
         }
-        return;
     }
 
 
-    private void changeGrid() {
+    private void grid() {
         if (camera.isTakingPicture() || camera.isTakingVideo()) { return; }
         switch (camera.getGrid()){
             case OFF:
                 camera.setGrid(Grid.DRAW_3X3);
-                tv_Grid.setText("3*3");
+                btn_Grid.setBackgroundResource(R.drawable.grid_on_24dp);
 //                sharedPre.setGrid(1);
                 Log.e(TAG, "changeGrid: 3*3");
                 break;
             case DRAW_3X3:
-                camera.setGrid(Grid.DRAW_4X4);
-                tv_Grid.setText("4*4");
-//                sharedPre.setGrid(2);
-                Log.e(TAG, "changeGrid: 4*4");
-                break;
-            case DRAW_4X4:
-                camera.setGrid(Grid.DRAW_PHI);
-                tv_Grid.setText("Grid Phi");
-//                sharedPre.setGrid(3);
-                Log.e(TAG, "changeGrid: Grid Phi");
-                break;
-            case DRAW_PHI:
                 camera.setGrid(Grid.OFF);
-                tv_Grid.setText("Off");
+                btn_Grid.setBackgroundResource(R.drawable.grid_off_24dp);
 //                sharedPre.setGrid(0);
                 Log.e(TAG, "changeGrid: Off");
                 break;
         }
-        return;
     }
 
     public void capturePicture(){
@@ -408,7 +407,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         camera.takeVideo(videoDir);
     }
 
-    private Runnable scaleUpAnimation = new Runnable() {
+    private final Runnable scaleUpAnimation = new Runnable() {
         @Override
         public void run() {
             ObjectAnimator scaleDownX = ObjectAnimator.ofFloat(btn_cap, "scaleX", 1f);
@@ -418,18 +417,15 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             AnimatorSet scaleDown = new AnimatorSet();
             scaleDown.play(scaleDownX).with(scaleDownY);
 
-            scaleDownX.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
-                @Override
-                public void onAnimationUpdate(ValueAnimator valueAnimator) {
-                    View p = (View) btn_cap.getParent();
-                    p.invalidate();
-                }
+            scaleDownX.addUpdateListener(valueAnimator -> {
+                View p = (View) btn_cap.getParent();
+                p.invalidate();
             });
             scaleDown.start();
         }
     };
 
-    private Runnable scaleDownAnimation = new Runnable() {
+    private final Runnable scaleDownAnimation = new Runnable() {
         @Override
         public void run() {
             Object target;
@@ -500,13 +496,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             case 1:
                 camera.setGrid(Grid.DRAW_3X3);
                 tv_Grid.setText("3*3");
-            case 2:
-                camera.setGrid(Grid.DRAW_4X4);
-                tv_Grid.setText("4*4");
-            case 3:
-                camera.setGrid(Grid.DRAW_PHI);
-                tv_Grid.setText("Grid Phi");
         }
+
+        //set hdr mode
+
     }
      */
 }
