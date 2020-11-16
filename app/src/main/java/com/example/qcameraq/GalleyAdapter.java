@@ -1,6 +1,7 @@
 package com.example.qcameraq;
 
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -10,10 +11,12 @@ import android.widget.ImageView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
+import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
+import java.util.List;
 
 public class GalleyAdapter extends RecyclerView.Adapter<GalleyAdapter.GalleryViewHolder> {
-    ArrayList<Bitmap> gallery = new ArrayList<>();
+    List<Picture> pictures = new ArrayList<Picture>();
 
     private static final String TAG = "GalleyAdapter";
 
@@ -32,21 +35,23 @@ public class GalleyAdapter extends RecyclerView.Adapter<GalleyAdapter.GalleryVie
     @Override
     public void onBindViewHolder(@NonNull GalleryViewHolder holder, int position) {
         Log.e(TAG, "onBindViewHolder: position =>" + position);
-        holder.bindGallery(gallery.get(position));
+        holder.bindGallery(pictures.get(position));
     }
 
     @Override
     public int getItemCount() {
-        return gallery.size();
+        return pictures.size();
     }
 
-    public void addItem(Bitmap bitmap){
-        gallery.add(bitmap);
+    public void addItem(Picture picture){
+        Log.e(TAG, "addItem");
+        pictures.add(picture);
         notifyDataSetChanged();
     }
 
-    public void addItems(ArrayList<Bitmap> gallery){
-        this.gallery.addAll(gallery);
+    public void addItems(List<Picture> pictures){
+        Log.e(TAG, "addItems");
+        this.pictures.addAll(pictures);
         notifyDataSetChanged();
     }
 
@@ -57,8 +62,11 @@ public class GalleyAdapter extends RecyclerView.Adapter<GalleyAdapter.GalleryVie
             img_preview = itemView.findViewById(R.id.img_pre_view);
         }
 
-        public void bindGallery(Bitmap bitmap){
-            img_preview.setImageBitmap(bitmap);
+        public void bindGallery(Picture picture){
+            Log.e(TAG, "bindGallery: ");
+            Bitmap bmp = BitmapFactory.decodeByteArray(picture.getPicture(), 0,
+                    picture.getPicture().length);
+            img_preview.setImageBitmap(bmp);
         }
     }
 }

@@ -11,9 +11,12 @@ import androidx.recyclerview.widget.RecyclerView;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
+import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.PointF;
+import android.media.MediaScannerConnection;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
@@ -23,7 +26,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
-import android.widget.Button;
+import android.widget.Gallery;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -32,6 +35,7 @@ import com.otaliastudios.cameraview.CameraException;
 import com.otaliastudios.cameraview.CameraListener;
 import com.otaliastudios.cameraview.CameraLogger;
 import com.otaliastudios.cameraview.CameraView;
+import com.otaliastudios.cameraview.FileCallback;
 import com.otaliastudios.cameraview.PictureResult;
 import com.otaliastudios.cameraview.VideoResult;
 import com.otaliastudios.cameraview.controls.Facing;
@@ -41,7 +45,11 @@ import com.otaliastudios.cameraview.controls.Hdr;
 import com.otaliastudios.cameraview.controls.Mode;
 import com.otaliastudios.cameraview.controls.PictureFormat;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.ArrayList;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
 
@@ -49,16 +57,14 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private Handler handler = new Handler();
 
-    private GalleyAdapter galleyAdapter;
+    private PictureDao pictureDao;
+
+    private byte[] pictureByte;
 
     private String pic_Format = "Pic.jpg";
     private String video_Format = "Video.mp4";
 
-    private File sd = Environment.getExternalStorageDirectory().getAbsoluteFile();
-    private File videoDir = new File(sd + File.separator,
-            System.currentTimeMillis() + video_Format);
-    private File picDir = new File(sd + File.separator,
-            System.currentTimeMillis() + pic_Format);
+    private File sd = new File(Environment.getExternalStorageDirectory().getAbsoluteFile() + File.separator + "QCamera");
 
     private Animation anim_Rotate_Front, anim_Rotate_Back;
 
@@ -81,10 +87,12 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private TextView tv_timer, tv_Holdtap;
     private RecyclerView rv_gallery;
 
+    private GalleyAdapter adapter;
+
     private CameraView camera;
 
     private Bitmap bitmap;
-//    private SharedPre sharedPre;
+    private ByteArrayOutputStream bos;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -93,18 +101,31 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         initView();
 
+        adapter = new GalleyAdapter();
+        //get picture form db and set in the recyclerView
+        pictureDao = AppDb.getAppDb(this).getPictureDao();
+
+        try{
+            if (pictureDao.getPictures() != null) {
+                adapter.addItems(pictureDao.getPictures());
+            }
+        } catch(Exception e){
+            e.printStackTrace();
+        }
+
+        rv_gallery.setLayoutManager(new LinearLayoutManager(this, RecyclerView.HORIZONTAL,
+                false));
+        rv_gallery.setAdapter(adapter);
+
         allPermissionGranted(REQUEST_CODE_PERMISSIONS, REQUIRED_PERMISSIONS);
 
-//        sharedPre = new SharedPre(this);
-
-//        checkCameraOption();
-
-        galleyAdapter = new GalleyAdapter();
+        //set CameraOption
         CameraLogger.setLogLevel(CameraLogger.LEVEL_VERBOSE);
         camera.setLifecycleOwner(this);
         camera.setPictureFormat(PictureFormat.JPEG);
         camera.setVideoMaxDuration(6000);
 
+        //Events Of Camera
         camera.addCameraListener(new CameraListener() {
             @Override
             public void onCameraError(@NonNull CameraException exception) {
@@ -126,7 +147,19 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     message("Captured while taking video. Size=" + result.getSize(), false);
                     return;
                 }
-                result.toFile(picDir, File::deleteOnExit);
+
+                bos = new ByteArrayOutputStream();
+                File picDir = new File(sd + File.separator, System.currentTimeMillis() + pic_Format);
+
+                result.toFile(picDir, file -> {});
+
+                //save picture in externalStorage
+                result.toBitmap(3200, 3200, bmp -> {
+                    bmp.compress(Bitmap.CompressFormat.JPEG, 100, bos);
+                });
+
+                pictureByte = bos.toByteArray();
+                addPicture(pictureByte);
             }
 
             @Override
@@ -147,7 +180,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             @Override
             public void onZoomChanged(float newValue, @NonNull float[] bounds, @Nullable PointF[] fingers) {
                 super.onZoomChanged(newValue, bounds, fingers);
-                message("Zoom:" + newValue, false);
             }
 
             @Override
@@ -173,7 +205,18 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
-    private void initView(){
+    private void addPicture(byte[] pictureByte) {
+        Picture picture = new Picture(pictureByte);
+        long result = pictureDao.addPic(picture);
+        if(result != -1) {
+            adapter.addItem(picture);
+            Log.e(TAG, "addPicture: successful!");
+        } else {
+            Log.e(TAG, "addPicture: is not successful!");
+        }
+    }
+
+    private void initView() {
         camera = findViewById(R.id.main_camera);
 
         btn_cap = findViewById(R.id.btn_main_capture);
@@ -195,7 +238,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         controlView();
     }
 
-    private void controlView(){
+    private void controlView() {
         btn_cap.setOnClickListener(this);
         activeCameraCapture();
         
@@ -203,27 +246,25 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         btn_rotate.setOnClickListener(this);
         btn_Grid.setOnClickListener(this);
         btn_Hdr.setOnClickListener(this);
-
-        rv_gallery.setLayoutManager(new LinearLayoutManager(this, RecyclerView.HORIZONTAL,
-                false));
-
-        rv_gallery.setAdapter(galleyAdapter);
     }
 
     private void activeCameraCapture() {
         btn_cap.setAlpha(1.0f);
-        btn_cap.setOnLongClickListener(new View.OnLongClickListener(){
+        btn_cap.setOnLongClickListener(new View.OnLongClickListener() {
             @Override
             public boolean onLongClick(View view) {
                 try {
                     Log.e(TAG, "onLongClick: btn_cap");
                     camera.setMode(Mode.VIDEO);
-                    camera.takeVideo(videoDir);
+//                    camera.takeVideo(videoDir);
+                    startTime = System.currentTimeMillis();
                     handler.postDelayed(updateTimerThread, 0);
                 } catch(Exception e){
                     e.printStackTrace();
                     Log.e(TAG, "onLongClick: Video Error");
                 }
+
+                btn_Hdr.setVisibility(View.INVISIBLE);
                 btn_Grid.setVisibility(View.INVISIBLE);
                 btn_rotate.setVisibility(View.INVISIBLE);
                 btn_flash.setVisibility(View.INVISIBLE);
@@ -236,21 +277,24 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     Log.e(TAG, "onLongClick: scaleUpAnimation()");
                 }
 
-                btn_cap.setOnTouchListener(new View.OnTouchListener(){
+                btn_cap.setOnTouchListener(new View.OnTouchListener() {
                     @Override
                     public boolean onTouch(View view, MotionEvent motionEvent) {
                         if(motionEvent.getAction() == MotionEvent.ACTION_BUTTON_PRESS){
                             Log.e(TAG, "onTouch: ACTION_BUTTON_PRESS");
                             capturePicture();
                         }
-                        if(motionEvent.getAction() == MotionEvent.ACTION_UP){
+
+                        if(motionEvent.getAction() == MotionEvent.ACTION_UP) {
                             Log.e(TAG, "onTouch: ACTION_UP");
                             camera.stopVideo();
                             handler.postDelayed(scaleDownAnimation, 100);
 
+                            handler.removeCallbacks(updateTimerThread);
                             tv_timer.setVisibility(View.INVISIBLE);
 
                             btn_Grid.setVisibility(View.VISIBLE);
+                            btn_Hdr.setVisibility(View.VISIBLE);
                             btn_flash.setVisibility(View.VISIBLE);
                             btn_rotate.setVisibility(View.VISIBLE);
                             tv_Holdtap.setVisibility(View.VISIBLE);
@@ -305,16 +349,14 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private final Runnable updateTimerThread = new Runnable() {
         public void run() {
-            timeInMilliseconds = SystemClock.uptimeMillis() - startTime;
-            updatedTime = timeSwapBuff + timeInMilliseconds;
+            long millis = System.currentTimeMillis() - startTime;
+            int seconds = (int) (millis / 1000);
+            int minutes = seconds / 60;
+            seconds = seconds % 60;
 
-            int secs = (int) (updatedTime / 1000);
-            int mins = secs / 60;
-            int hrs = mins / 60;
+            tv_timer.setText(String.format("%d:%02d", minutes, seconds));
 
-            secs %= 60;
-            tv_timer.setText(String.format("%02d", mins) + ":" + String.format("%02d", secs));
-            handler.postDelayed(this, 0);
+            handler.postDelayed(this, 500);
         }
     };
 
@@ -327,13 +369,11 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             case FRONT:
                 camera.setFacing(Facing.BACK);
                 btn_rotate.startAnimation(anim_Rotate_Back);
-//                sharedPre.setFace(true);
                 Log.e(TAG, "rotateCamera: Back");
                 break;
             case BACK:
                 camera.setFacing(Facing.FRONT);
                 btn_rotate.startAnimation(anim_Rotate_Front);
-//                sharedPre.setFace(false);
                 Log.e(TAG, "rotateCamera: Front");
                 break;
         }
@@ -345,24 +385,20 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             case ON:
                 camera.setFlash(Flash.AUTO);
                 btn_flash.setBackgroundResource(R.drawable.ic_baseline_flash_auto_24);
-//                sharedPre.setFlash(2);
                 Log.e(TAG, "flash: Auto");
                 break;
             case AUTO:
                 camera.setFlash(Flash.OFF);
                 btn_flash.setBackgroundResource(R.drawable.ic_baseline_flash_off_24);
-//                sharedPre.setFlash(0);
                 Log.e(TAG, "flash: Off");
                 break;
             case OFF:
                 camera.setFlash(Flash.ON);
                 btn_flash.setBackgroundResource(R.drawable.ic_baseline_flash_on_24);
-//                sharedPre.setFlash(1);
                 Log.e(TAG, "flash: On");
                 break;
         }
     }
-
 
     private void grid() {
         if (camera.isTakingPicture() || camera.isTakingVideo()) { return; }
@@ -370,13 +406,11 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             case OFF:
                 camera.setGrid(Grid.DRAW_3X3);
                 btn_Grid.setBackgroundResource(R.drawable.grid_on_24dp);
-//                sharedPre.setGrid(1);
                 Log.e(TAG, "changeGrid: 3*3");
                 break;
             case DRAW_3X3:
                 camera.setGrid(Grid.OFF);
                 btn_Grid.setBackgroundResource(R.drawable.grid_off_24dp);
-//                sharedPre.setGrid(0);
                 Log.e(TAG, "changeGrid: Off");
                 break;
         }
@@ -388,7 +422,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             return;
         }
         if (camera.isTakingPicture()) { return; }
-        message("Capturing picture...", false);
         try {
             camera.takePicture();
         } catch (Exception e){
@@ -404,7 +437,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
         if(camera.isTakingVideo()) { return; }
         message("Recording for 5 seconds...", true);
-        camera.takeVideo(videoDir);
+//        camera.takeVideo(videoDir);
     }
 
     private final Runnable scaleUpAnimation = new Runnable() {
@@ -447,7 +480,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     };
 
-    private void allPermissionGranted(int requestCode, String[] REQUIRED_PERMISSIONS){
+    private void allPermissionGranted(int requestCode, String[] REQUIRED_PERMISSIONS) {
         for(String permission : REQUIRED_PERMISSIONS){
             if(ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED){
                 ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS);
@@ -460,46 +493,4 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             }
         }
     }
-
-    /*
-    private void checkCameraOption(){
-
-        //set flash mode
-        switch (sharedPre.getFlash()){
-            case 0:
-                camera.setFlash(Flash.OFF);
-                btn_flash.setBackgroundResource(R.drawable.flash_off_48px);
-                break;
-            case 1:
-                camera.setFlash(Flash.ON);
-                btn_flash.setBackgroundResource(R.drawable.flash_on_48px);
-                break;
-            case 2:
-                camera.setFlash(Flash.AUTO);
-                btn_flash.setBackgroundResource(R.drawable.flash_auto_48px);
-                break;
-        }
-
-        //set face mode
-        boolean rotated = sharedPre.getRotated();
-        if (rotated) {
-            camera.setFacing(Facing.BACK);
-        } else if (!(rotated)) {
-            camera.setFacing(Facing.FRONT);
-        }
-
-        //set grid mode
-        switch (sharedPre.getGrid()){
-            case 0:
-                camera.setGrid(Grid.OFF);
-                tv_Grid.setText("Off");
-            case 1:
-                camera.setGrid(Grid.DRAW_3X3);
-                tv_Grid.setText("3*3");
-        }
-
-        //set hdr mode
-
-    }
-     */
 }
