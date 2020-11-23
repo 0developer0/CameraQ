@@ -8,13 +8,14 @@
     tools:context=".MainActivity">
 
     <com.otaliastudios.cameraview.CameraView
-        android:id="@+id/main_camera"
+        android:id="@+id/camera"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:focusable="true"
         android:focusableInTouchMode="true"
         android:keepScreenOn="true"
         app:cameraGesturePinch="zoom"
+        app:cameraRequestPermissions="false"
         tools:layout_editor_absoluteX="0dp"
         tools:layout_editor_absoluteY="0dp"
         app:cameraPictureSizeMaxHeight="3120"
@@ -23,7 +24,7 @@
         app:cameraVideoSizeMaxWidth="780">
 
         <TextView
-            android:id="@+id/tv_main_timer"
+            android:id="@+id/tv_timer"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
@@ -46,7 +47,7 @@
     </com.otaliastudios.cameraview.CameraView>
 
     <FrameLayout
-        android:id="@+id/fr_main_buttonbar"
+        android:id="@+id/fr_buttonbar"
         android:layout_width="match_parent"
         android:layout_marginStart="60dp"
         android:layout_marginEnd="60dp"
@@ -55,7 +56,7 @@
         style="?attr/buttonBarStyle">
 
         <androidx.appcompat.widget.AppCompatImageButton
-            android:id="@+id/btn_main_flash"
+            android:id="@+id/btn_flash"
             android:layout_width="25dp"
             android:layout_height="25dp"
             android:layout_gravity="center_vertical"
@@ -63,7 +64,7 @@
             android:backgroundTint="@color/white"/>
 
         <androidx.appcompat.widget.AppCompatImageButton
-            android:id="@+id/btn_main_capture"
+            android:id="@+id/btn_capture"
             android:layout_width="100dp"
             android:layout_height="100dp"
             android:background="@drawable/ic_capture_ring"
@@ -71,7 +72,7 @@
             android:layout_marginBottom="7dp" />
 
         <androidx.appcompat.widget.AppCompatImageButton
-            android:id="@+id/btn_main_rotate"
+            android:id="@+id/btn_rotate"
             android:layout_width="25dp"
             android:layout_height="25dp"
             android:layout_gravity="end|center_vertical"
@@ -79,7 +80,7 @@
             android:backgroundTint="@color/white"/>
 
         <TextView
-            android:id="@+id/tv_main_holdtap"
+            android:id="@+id/tv_holdtap"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Hold for video, tap for photo"
@@ -92,7 +93,7 @@
 
 
     <androidx.appcompat.widget.AppCompatImageButton
-        android:id="@+id/btn_main_hdr"
+        android:id="@+id/btn_hdr"
         android:layout_width="25dp"
         android:layout_height="25dp"
         android:background="@drawable/hdr_off_24dp"
@@ -102,7 +103,7 @@
         android:backgroundTint="@color/white"/>
 
     <androidx.appcompat.widget.AppCompatImageButton
-        android:id="@+id/btn_main_grid"
+        android:id="@+id/btn_grid"
         android:layout_width="25dp"
         android:layout_height="25dp"
         android:background="@drawable/grid_off_24dp"
@@ -112,10 +113,10 @@
         android:backgroundTint="@color/white"/>
 
     <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rv_main_gallery"
+        android:id="@+id/rv_gallery"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        app:layout_constraintBottom_toBottomOf="@+id/main_camera"
-        app:layout_constraintStart_toStartOf="@id/main_camera"
+        app:layout_constraintBottom_toBottomOf="@+id/camera"
+        app:layout_constraintStart_toStartOf="@id/camera"
         android:layout_marginBottom="120dp"/>
 </androidx.constraintlayout.widget.ConstraintLayout>

@@ -16,7 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class GalleyAdapter extends RecyclerView.Adapter<GalleyAdapter.GalleryViewHolder> {
-    List<Picture> pictures = new ArrayList<Picture>();
+    ArrayList<Bitmap> pictures = new ArrayList<>();
 
     private static final String TAG = "GalleyAdapter";
 
@@ -43,15 +43,9 @@ public class GalleyAdapter extends RecyclerView.Adapter<GalleyAdapter.GalleryVie
         return pictures.size();
     }
 
-    public void addItem(Picture picture){
+    public void addItem(Bitmap picture){
         Log.e(TAG, "addItem");
         pictures.add(picture);
-        notifyDataSetChanged();
-    }
-
-    public void addItems(List<Picture> pictures){
-        Log.e(TAG, "addItems");
-        this.pictures.addAll(pictures);
         notifyDataSetChanged();
     }
 
@@ -62,11 +56,9 @@ public class GalleyAdapter extends RecyclerView.Adapter<GalleyAdapter.GalleryVie
             img_preview = itemView.findViewById(R.id.img_pre_view);
         }
 
-        public void bindGallery(Picture picture){
-            Log.e(TAG, "bindGallery: ");
-            Bitmap bmp = BitmapFactory.decodeByteArray(picture.getPicture(), 0,
-                    picture.getPicture().length);
-            img_preview.setImageBitmap(bmp);
+        public void bindGallery(Bitmap picture){
+            Log.e(TAG, "bindGallery");
+            img_preview.setImageBitmap(picture);
         }
     }
 }

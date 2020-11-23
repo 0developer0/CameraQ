@@ -15,27 +15,28 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.PointF;
-import android.media.MediaScannerConnection;
-import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.SystemClock;
 import android.util.Log;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
-import android.widget.Gallery;
-import android.widget.ImageView;
-import android.widget.TextView;
 import android.widget.Toast;
 
+import com.android.volley.DefaultRetryPolicy;
+import com.android.volley.Request;
+import com.android.volley.RequestQueue;
+import com.android.volley.Response;
+import com.android.volley.VolleyError;
+import com.android.volley.toolbox.StringRequest;
+import com.android.volley.toolbox.Volley;
+import com.example.qcameraq.databinding.ActivityMainBinding;
 import com.otaliastudios.cameraview.CameraException;
 import com.otaliastudios.cameraview.CameraListener;
 import com.otaliastudios.cameraview.CameraLogger;
 import com.otaliastudios.cameraview.CameraView;
-import com.otaliastudios.cameraview.FileCallback;
 import com.otaliastudios.cameraview.PictureResult;
 import com.otaliastudios.cameraview.VideoResult;
 import com.otaliastudios.cameraview.controls.Facing;
@@ -45,26 +46,23 @@ import com.otaliastudios.cameraview.controls.Hdr;
 import com.otaliastudios.cameraview.controls.Mode;
 import com.otaliastudios.cameraview.controls.PictureFormat;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.util.ArrayList;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
+
+    private ActivityMainBinding binding;
+
+    private StringRequest stringRequest;
+    private RequestQueue requestQueue;
 
     private static final String TAG = "MainActivity";
 
     private Handler handler = new Handler();
 
-    private PictureDao pictureDao;
-
-    private byte[] pictureByte;
-
     private String pic_Format = "Pic.jpg";
     private String video_Format = "Video.mp4";
 
-    private File sd = new File(Environment.getExternalStorageDirectory().getAbsoluteFile() + File.separator + "QCamera");
+    private File path = Environment.getExternalStorageDirectory().getAbsoluteFile();
 
     private Animation anim_Rotate_Front, anim_Rotate_Back;
 
@@ -74,7 +72,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     "android.permission.Camera",
                     "android.permission.RECORD_AUDIO",
                     "android.permission.WRITE_EXTERNAL_STORAGE",
-                    "android.permission.READ_EXTERNAL_STORAGE"
+                    "android.permission.READ_EXTERNAL_STORAGE",
+                    "android.permission.INTERNET"
             };
 
     private long timeInMilliseconds = 0L,
@@ -82,51 +81,50 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             updatedTime = 0L,
             timeSwapBuff = 0L;
 
-
-    private ImageView btn_cap, btn_rotate, btn_flash, btn_Grid, btn_Hdr;
-    private TextView tv_timer, tv_Holdtap;
-    private RecyclerView rv_gallery;
-
+    private View rootView;
     private GalleyAdapter adapter;
-
-    private CameraView camera;
-
     private Bitmap bitmap;
-    private ByteArrayOutputStream bos;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
+        binding = ActivityMainBinding.inflate(getLayoutInflater());
+        rootView = binding.getRoot();
+        setContentView(rootView);
 
         initView();
 
         adapter = new GalleyAdapter();
-        //get picture form db and set in the recyclerView
-        pictureDao = AppDb.getAppDb(this).getPictureDao();
-
-        try{
-            if (pictureDao.getPictures() != null) {
-                adapter.addItems(pictureDao.getPictures());
-            }
-        } catch(Exception e){
-            e.printStackTrace();
-        }
-
-        rv_gallery.setLayoutManager(new LinearLayoutManager(this, RecyclerView.HORIZONTAL,
+        binding.rvGallery.setLayoutManager(new LinearLayoutManager(this, RecyclerView.HORIZONTAL,
                 false));
-        rv_gallery.setAdapter(adapter);
+        binding.rvGallery.setAdapter(adapter);
 
         allPermissionGranted(REQUEST_CODE_PERMISSIONS, REQUIRED_PERMISSIONS);
 
+        stringRequest = new StringRequest("1.2.3.4.68500", new Response.Listener<String>() {
+            @Override
+            public void onResponse(String response) {
+                Log.e(TAG, "onResponse: " + response);
+            }
+        }, new Response.ErrorListener() {
+            @Override
+            public void onErrorResponse(VolleyError error) {
+                Log.e(TAG, "onErrorResponse: " + error.toString());
+            }
+        });
+        stringRequest.setTag(TAG);
+        stringRequest.setRetryPolicy(new DefaultRetryPolicy(1000, 3, 2));
+        requestQueue = Volley.newRequestQueue(this);
+        requestQueue.add(stringRequest);
+
         //set CameraOption
         CameraLogger.setLogLevel(CameraLogger.LEVEL_VERBOSE);
-        camera.setLifecycleOwner(this);
-        camera.setPictureFormat(PictureFormat.JPEG);
-        camera.setVideoMaxDuration(6000);
+        binding.camera.setLifecycleOwner(this);
+        binding.camera.setPictureFormat(PictureFormat.JPEG);
+        binding.camera.setVideoMaxDuration(6000);
 
         //Events Of Camera
-        camera.addCameraListener(new CameraListener() {
+        binding.camera.addCameraListener(new CameraListener() {
             @Override
             public void onCameraError(@NonNull CameraException exception) {
                 super.onCameraError(exception);
@@ -143,33 +141,26 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             public void onPictureTaken(@NonNull PictureResult result) {
                 super.onPictureTaken(result);
                 Log.e(TAG, "onPictureTaken");
-                if(camera.isTakingVideo()){
+                if(binding.camera.isTakingVideo()){
                     message("Captured while taking video. Size=" + result.getSize(), false);
                     return;
                 }
 
-                bos = new ByteArrayOutputStream();
-                File picDir = new File(sd + File.separator, System.currentTimeMillis() + pic_Format);
-
+                File picDir = new File(path + File.separator, System.currentTimeMillis() + pic_Format);
                 result.toFile(picDir, file -> {});
 
-                //save picture in externalStorage
                 result.toBitmap(3200, 3200, bmp -> {
-                    bmp.compress(Bitmap.CompressFormat.JPEG, 100, bos);
+                    adapter.addItem(bmp);
                 });
-
-                pictureByte = bos.toByteArray();
-                addPicture(pictureByte);
             }
 
             @Override
             public void onVideoTaken(@NonNull VideoResult result) {
                 super.onVideoTaken(result);
                 Log.e(TAG, "onVideoTaken");
-                if(camera.isTakingPicture()){
+                if(binding.camera.isTakingPicture()){
                     return;
                 }
-                return;
             }
 
             @Override
@@ -197,6 +188,12 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         });
     }
 
+    @Override
+    protected void onStop() {
+        super.onStop();
+        requestQueue.cancelAll(TAG);
+    }
+
     private void message(String content, boolean important){
         if(important){
             Toast.makeText(getApplicationContext(), content, Toast.LENGTH_LONG).show();
@@ -205,144 +202,116 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
-    private void addPicture(byte[] pictureByte) {
-        Picture picture = new Picture(pictureByte);
-        long result = pictureDao.addPic(picture);
-        if(result != -1) {
-            adapter.addItem(picture);
-            Log.e(TAG, "addPicture: successful!");
-        } else {
-            Log.e(TAG, "addPicture: is not successful!");
-        }
-    }
-
     private void initView() {
-        camera = findViewById(R.id.main_camera);
-
-        btn_cap = findViewById(R.id.btn_main_capture);
-        btn_rotate = findViewById(R.id.btn_main_rotate);
-        btn_flash = findViewById(R.id.btn_main_flash);
-        btn_Grid = findViewById(R.id.btn_main_grid);
-        btn_Hdr = findViewById(R.id.btn_main_hdr);
-
-        tv_timer = findViewById(R.id.tv_main_timer);
-        tv_Holdtap = findViewById(R.id.tv_main_holdtap);
-
-        rv_gallery = findViewById(R.id.rv_main_gallery);
-
         anim_Rotate_Front = AnimationUtils.loadAnimation(this, R.anim.rotate_front);
         anim_Rotate_Back = AnimationUtils.loadAnimation(this, R.anim.rotate_back);
-
-        activeCameraCapture();
 
         controlView();
     }
 
     private void controlView() {
-        btn_cap.setOnClickListener(this);
-        activeCameraCapture();
-        
-        btn_flash.setOnClickListener(this);
-        btn_rotate.setOnClickListener(this);
-        btn_Grid.setOnClickListener(this);
-        btn_Hdr.setOnClickListener(this);
+        binding.btnCapture.setOnClickListener(this);
+
+        binding.btnFlash.setOnClickListener(this);
+        binding.btnRotate.setOnClickListener(this);
+        binding.btnGrid.setOnClickListener(this);
+        binding.btnHdr.setOnClickListener(this);
+
+//        btn_cap.setOnLongClickListener(new View.OnLongClickListener() {
+//            @Override
+//            public boolean onLongClick(View view) {
+//                try {
+//                    Log.e(TAG, "onLongClick: btn_cap");
+//                    camera.setMode(Mode.VIDEO);
+////                    camera.takeVideo(videoDir);
+//                    startTime = System.currentTimeMillis();
+//                    handler.postDelayed(updateTimerThread, 0);
+//                } catch(Exception e) {
+//                    e.printStackTrace();
+//                }
+//
+//                btn_Hdr.setVisibility(View.INVISIBLE);
+//                btn_Grid.setVisibility(View.INVISIBLE);
+//                btn_rotate.setVisibility(View.INVISIBLE);
+//                btn_flash.setVisibility(View.INVISIBLE);
+//                tv_Holdtap.setVisibility(View.INVISIBLE);
+//                tv_timer.setVisibility(View.VISIBLE);
+//
+//                handler.postDelayed(scaleUpAnimation, 100);
+//            }
+//        });
     }
 
-    private void activeCameraCapture() {
-        btn_cap.setAlpha(1.0f);
-        btn_cap.setOnLongClickListener(new View.OnLongClickListener() {
-            @Override
-            public boolean onLongClick(View view) {
-                try {
-                    Log.e(TAG, "onLongClick: btn_cap");
-                    camera.setMode(Mode.VIDEO);
-//                    camera.takeVideo(videoDir);
-                    startTime = System.currentTimeMillis();
-                    handler.postDelayed(updateTimerThread, 0);
-                } catch(Exception e){
-                    e.printStackTrace();
-                    Log.e(TAG, "onLongClick: Video Error");
-                }
-
-                btn_Hdr.setVisibility(View.INVISIBLE);
-                btn_Grid.setVisibility(View.INVISIBLE);
-                btn_rotate.setVisibility(View.INVISIBLE);
-                btn_flash.setVisibility(View.INVISIBLE);
-                tv_Holdtap.setVisibility(View.INVISIBLE);
-                tv_timer.setVisibility(View.VISIBLE);
-
-                try{
-                    handler.postDelayed(scaleUpAnimation, 100);
-                } catch (Exception e){
-                    Log.e(TAG, "onLongClick: scaleUpAnimation()");
-                }
-
-                btn_cap.setOnTouchListener(new View.OnTouchListener() {
-                    @Override
-                    public boolean onTouch(View view, MotionEvent motionEvent) {
-                        if(motionEvent.getAction() == MotionEvent.ACTION_BUTTON_PRESS){
-                            Log.e(TAG, "onTouch: ACTION_BUTTON_PRESS");
-                            capturePicture();
-                        }
-
-                        if(motionEvent.getAction() == MotionEvent.ACTION_UP) {
-                            Log.e(TAG, "onTouch: ACTION_UP");
-                            camera.stopVideo();
-                            handler.postDelayed(scaleDownAnimation, 100);
-
-                            handler.removeCallbacks(updateTimerThread);
-                            tv_timer.setVisibility(View.INVISIBLE);
-
-                            btn_Grid.setVisibility(View.VISIBLE);
-                            btn_Hdr.setVisibility(View.VISIBLE);
-                            btn_flash.setVisibility(View.VISIBLE);
-                            btn_rotate.setVisibility(View.VISIBLE);
-                            tv_Holdtap.setVisibility(View.VISIBLE);
-
-                            camera.setMode(Mode.PICTURE);
-
-                            return true;
-                        }
-                        return true;
-                    }
-                });
-                return true;
-            }
-        });
-        return;
-    }
+//    private void activeCameraCapture() {
+//        btn_cap.setOnLongClickListener(new View.OnLongClickListener() {
+//            @Override
+//            public boolean onLongClick(View view) {
+//                btn_cap.setOnTouchListener(new View.OnTouchListener() {
+//                    @Override
+//                    public boolean onTouch(View view, MotionEvent motionEvent) {
+//                        if(motionEvent.getAction() == MotionEvent.ACTION_BUTTON_PRESS){
+//                            Log.e(TAG, "onTouch: ACTION_BUTTON_PRESS");
+//                            capturePicture();
+//                        }
+//
+//                        if(motionEvent.getAction() == MotionEvent.ACTION_UP) {
+//                            Log.e(TAG, "onTouch: ACTION_UP");
+//                            camera.stopVideo();
+//                            handler.postDelayed(scaleDownAnimation, 100);
+//
+//                            handler.removeCallbacks(updateTimerThread);
+//                            tv_timer.setVisibility(View.INVISIBLE);
+//
+//                            btn_Grid.setVisibility(View.VISIBLE);
+//                            btn_Hdr.setVisibility(View.VISIBLE);
+//                            btn_flash.setVisibility(View.VISIBLE);
+//                            btn_rotate.setVisibility(View.VISIBLE);
+//                            tv_Holdtap.setVisibility(View.VISIBLE);
+//
+//                            camera.setMode(Mode.PICTURE);
+//
+//                            return true;
+//                        }
+//                        return true;
+//                    }
+//                });
+//                return true;
+//            }
+//        });
+//        return;
+//    }
 
     @Override
     public void onClick(View view)
     {
         switch (view.getId())
         {
-            case R.id.btn_main_capture:
+            case R.id.btn_capture:
                 capturePicture();
                 break;
-            case R.id.btn_main_rotate:
+            case R.id.btn_rotate:
                 rotateCamera();
                 break;
-            case R.id.btn_main_flash:
+            case R.id.btn_flash:
                 flash();
                 break;
-            case R.id.btn_main_grid:
+            case R.id.btn_grid:
                 grid();
                 break;
-            case R.id.btn_main_hdr:
+            case R.id.btn_hdr:
                 hdr();
                 break;
         }
     }
 
     private void hdr() {
-        if(camera.getHdr() == Hdr.ON){
-            camera.setHdr(Hdr.OFF);
-            btn_Hdr.setBackgroundResource(R.drawable.hdr_off_24dp);
+        if(binding.camera.getHdr() == Hdr.ON){
+            binding.camera.setHdr(Hdr.OFF);
+            binding.camera.setBackgroundResource(R.drawable.hdr_off_24dp);
             Log.e(TAG, "hdr: Off");
         } else{
-            camera.setHdr(Hdr.ON);
-            btn_Hdr.setBackgroundResource(R.drawable.hdr_on_24dp);
+            binding.camera.setHdr(Hdr.ON);
+            binding.camera.setBackgroundResource(R.drawable.hdr_on_24dp);
             Log.e(TAG, "hdr: On");
         }
     }
@@ -354,88 +323,88 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             int minutes = seconds / 60;
             seconds = seconds % 60;
 
-            tv_timer.setText(String.format("%d:%02d", minutes, seconds));
+            binding.tvTimer.setText(String.format("%d:%02d", minutes, seconds));
 
             handler.postDelayed(this, 500);
         }
     };
 
     private void rotateCamera() {
-        if(camera.isTakingVideo() || camera.isTakingPicture()){
+        if(binding.camera.isTakingVideo() || binding.camera.isTakingPicture()){
             Log.e(TAG, "rotateCamera: Taking Picture or Video");
             return;
         }
-        switch (camera.getFacing()) {
+        switch (binding.camera.getFacing()) {
             case FRONT:
-                camera.setFacing(Facing.BACK);
-                btn_rotate.startAnimation(anim_Rotate_Back);
+                binding.camera.setFacing(Facing.BACK);
+                binding.btnRotate.startAnimation(anim_Rotate_Back);
                 Log.e(TAG, "rotateCamera: Back");
                 break;
             case BACK:
-                camera.setFacing(Facing.FRONT);
-                btn_rotate.startAnimation(anim_Rotate_Front);
+                binding.camera.setFacing(Facing.FRONT);
+                binding.btnRotate.startAnimation(anim_Rotate_Front);
                 Log.e(TAG, "rotateCamera: Front");
                 break;
         }
     }
 
     private void flash() {
-        if(camera.isTakingPicture() || camera.isTakingVideo()) { return; }
-        switch (camera.getFlash()) {
+        if(binding.camera.isTakingPicture() || binding.camera.isTakingVideo()) { return; }
+        switch (binding.camera.getFlash()) {
             case ON:
-                camera.setFlash(Flash.AUTO);
-                btn_flash.setBackgroundResource(R.drawable.ic_baseline_flash_auto_24);
+                binding.camera.setFlash(Flash.AUTO);
+                binding.btnFlash.setBackgroundResource(R.drawable.ic_baseline_flash_auto_24);
                 Log.e(TAG, "flash: Auto");
                 break;
             case AUTO:
-                camera.setFlash(Flash.OFF);
-                btn_flash.setBackgroundResource(R.drawable.ic_baseline_flash_off_24);
+                binding.camera.setFlash(Flash.OFF);
+                binding.btnFlash.setBackgroundResource(R.drawable.ic_baseline_flash_off_24);
                 Log.e(TAG, "flash: Off");
                 break;
             case OFF:
-                camera.setFlash(Flash.ON);
-                btn_flash.setBackgroundResource(R.drawable.ic_baseline_flash_on_24);
+                binding.camera.setFlash(Flash.ON);
+                binding.btnFlash.setBackgroundResource(R.drawable.ic_baseline_flash_on_24);
                 Log.e(TAG, "flash: On");
                 break;
         }
     }
 
     private void grid() {
-        if (camera.isTakingPicture() || camera.isTakingVideo()) { return; }
-        switch (camera.getGrid()){
+        if (binding.camera.isTakingPicture() || binding.camera.isTakingVideo()) { return; }
+        switch (binding.camera.getGrid()){
             case OFF:
-                camera.setGrid(Grid.DRAW_3X3);
-                btn_Grid.setBackgroundResource(R.drawable.grid_on_24dp);
+                binding.camera.setGrid(Grid.DRAW_3X3);
+                binding.btnGrid.setBackgroundResource(R.drawable.grid_on_24dp);
                 Log.e(TAG, "changeGrid: 3*3");
                 break;
             case DRAW_3X3:
-                camera.setGrid(Grid.OFF);
-                btn_Grid.setBackgroundResource(R.drawable.grid_off_24dp);
+                binding.camera.setGrid(Grid.OFF);
+                binding.btnGrid.setBackgroundResource(R.drawable.grid_off_24dp);
                 Log.e(TAG, "changeGrid: Off");
                 break;
         }
     }
 
     public void capturePicture(){
-        if (camera.getMode() == Mode.VIDEO) {
+        if (binding.camera.getMode() == Mode.VIDEO) {
             message("Can't take HQ pictures while in VIDEO mode.", false);
             return;
         }
-        if (camera.isTakingPicture()) { return; }
+        if (binding.camera.isTakingPicture()) { return; }
         try {
-            camera.takePicture();
+            binding.camera.takePicture();
         } catch (Exception e){
             Log.e(TAG, "capturePicture: Error Save Picture");
         }
     }
 
     private void captureVideo() {
-        camera.setMode(Mode.VIDEO);
-        if (camera.getMode() == Mode.PICTURE) {
+        binding.camera.setMode(Mode.VIDEO);
+        if (binding.camera.getMode() == Mode.PICTURE) {
             message("Can't record HQ videos while in PICTURE mode.", false);
             return;
         }
-        if(camera.isTakingVideo()) { return; }
+        if(binding.camera.isTakingVideo()) { return; }
         message("Recording for 5 seconds...", true);
 //        camera.takeVideo(videoDir);
     }
@@ -443,15 +412,15 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private final Runnable scaleUpAnimation = new Runnable() {
         @Override
         public void run() {
-            ObjectAnimator scaleDownX = ObjectAnimator.ofFloat(btn_cap, "scaleX", 1f);
-            ObjectAnimator scaleDownY = ObjectAnimator.ofFloat(btn_cap, "scaleY", 1f);
+            ObjectAnimator scaleDownX = ObjectAnimator.ofFloat(binding.btnCapture, "scaleX", 1f);
+            ObjectAnimator scaleDownY = ObjectAnimator.ofFloat(binding.btnCapture, "scaleY", 1f);
             scaleDownX.setDuration(100);
             scaleDownY.setDuration(100);
             AnimatorSet scaleDown = new AnimatorSet();
             scaleDown.play(scaleDownX).with(scaleDownY);
 
             scaleDownX.addUpdateListener(valueAnimator -> {
-                View p = (View) btn_cap.getParent();
+                View p = (View) binding.btnCapture.getParent();
                 p.invalidate();
             });
             scaleDown.start();
@@ -462,8 +431,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         @Override
         public void run() {
             Object target;
-            ObjectAnimator scaleDownX = ObjectAnimator.ofFloat(btn_cap, "scaleX", 1f);
-            ObjectAnimator scaleDownY = ObjectAnimator.ofFloat(btn_cap, "scaleY", 1f);
+            ObjectAnimator scaleDownX = ObjectAnimator.ofFloat(binding.camera, "scaleX", 1f);
+            ObjectAnimator scaleDownY = ObjectAnimator.ofFloat(binding.camera, "scaleY", 1f);
             scaleDownX.setDuration(100);
             scaleDownY.setDuration(100);
             AnimatorSet scaleDown = new AnimatorSet();
@@ -472,7 +441,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             scaleDownX.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
                 @Override
                 public void onAnimationUpdate(ValueAnimator valueAnimator) {
-                    View p = (View) btn_cap.getParent();
+                    View p = (View) binding.camera.getParent();
                     p.invalidate();
                 }
             });
@@ -486,7 +455,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS);
             } else{
                 try {
-                    camera.open();
+                    binding.camera.open();
                 } catch (Exception e){
                     Log.e(TAG, "allPermissionGranted");
                 }
