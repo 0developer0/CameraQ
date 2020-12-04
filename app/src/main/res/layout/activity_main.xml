@@ -91,6 +91,27 @@
             android:layout_marginBottom="5dp" />
     </FrameLayout>
 
+    <ProgressBar
+        android:id="@+id/pg_upload"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        app:layout_constraintEnd_toEndOf="@id/camera"
+        app:layout_constraintBottom_toTopOf="@id/fr_buttonbar"
+        android:layout_marginBottom="70dp"
+        android:layout_marginEnd="20dp"
+        android:visibility="invisible"
+        tools:visibility="visible"
+        android:indeterminateDrawable="@drawable/progress" />
+
+    <TextView
+        android:id="@+id/tv_percentage"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="6dp"
+        tools:text="0 B/20.0 MB"
+        app:layout_constraintTop_toBottomOf="@id/pg_upload"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:visibility="invisible"/>
 
     <androidx.appcompat.widget.AppCompatImageButton
         android:id="@+id/btn_hdr"

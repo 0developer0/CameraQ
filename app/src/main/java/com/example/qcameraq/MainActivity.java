@@ -8,9 +8,7 @@ import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import android.animation.AnimatorSet;
-import android.animation.ObjectAnimator;
-import android.animation.ValueAnimator;
+import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
@@ -25,6 +23,7 @@ import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
 import android.widget.Toast;
 
+import com.android.volley.AuthFailureError;
 import com.android.volley.DefaultRetryPolicy;
 import com.android.volley.Request;
 import com.android.volley.RequestQueue;
@@ -33,10 +32,15 @@ import com.android.volley.VolleyError;
 import com.android.volley.toolbox.StringRequest;
 import com.android.volley.toolbox.Volley;
 import com.example.qcameraq.databinding.ActivityMainBinding;
+import com.karumi.dexter.Dexter;
+import com.karumi.dexter.DexterBuilder;
+import com.karumi.dexter.MultiplePermissionsReport;
+import com.karumi.dexter.PermissionToken;
+import com.karumi.dexter.listener.PermissionRequest;
+import com.karumi.dexter.listener.multi.MultiplePermissionsListener;
 import com.otaliastudios.cameraview.CameraException;
 import com.otaliastudios.cameraview.CameraListener;
 import com.otaliastudios.cameraview.CameraLogger;
-import com.otaliastudios.cameraview.CameraView;
 import com.otaliastudios.cameraview.PictureResult;
 import com.otaliastudios.cameraview.VideoResult;
 import com.otaliastudios.cameraview.controls.Facing;
@@ -46,14 +50,16 @@ import com.otaliastudios.cameraview.controls.Hdr;
 import com.otaliastudios.cameraview.controls.Mode;
 import com.otaliastudios.cameraview.controls.PictureFormat;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
 
     private ActivityMainBinding binding;
-
-    private StringRequest stringRequest;
-    private RequestQueue requestQueue;
 
     private static final String TAG = "MainActivity";
 
@@ -66,6 +72,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private Animation anim_Rotate_Front, anim_Rotate_Back;
 
+    private String UPLOAD_URL = "1.1.1.1.9999";
+
     private static final int REQUEST_CODE_PERMISSIONS = 786;
     private final static String[] REQUIRED_PERMISSIONS = new String[]
             {
@@ -73,7 +81,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     "android.permission.RECORD_AUDIO",
                     "android.permission.WRITE_EXTERNAL_STORAGE",
                     "android.permission.READ_EXTERNAL_STORAGE",
-                    "android.permission.INTERNET"
             };
 
     private long timeInMilliseconds = 0L,
@@ -88,110 +95,138 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        binding = ActivityMainBinding.inflate(getLayoutInflater());
-        rootView = binding.getRoot();
-        setContentView(rootView);
 
-        initView();
+        Dexter.withContext(getApplicationContext()).
+                withPermissions(
+                        Manifest.permission.CAMERA,
+                        Manifest.permission.RECORD_AUDIO,
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE
+                ).withListener(new MultiplePermissionsListener() {
+            @Override
+            public void onPermissionsChecked(MultiplePermissionsReport multiplePermissionsReport) {
+                if(multiplePermissionsReport.areAllPermissionsGranted()) {
+                    binding = ActivityMainBinding.inflate(getLayoutInflater());
+                    rootView = binding.getRoot();
+                    setContentView(rootView);
 
-        adapter = new GalleyAdapter();
-        binding.rvGallery.setLayoutManager(new LinearLayoutManager(this, RecyclerView.HORIZONTAL,
-                false));
-        binding.rvGallery.setAdapter(adapter);
+                    initView();
 
-        allPermissionGranted(REQUEST_CODE_PERMISSIONS, REQUIRED_PERMISSIONS);
+                    adapter = new GalleyAdapter();
+                    binding.rvGallery.setLayoutManager(new LinearLayoutManager(getApplicationContext(), RecyclerView.HORIZONTAL,
+                            false));
+                    binding.rvGallery.setAdapter(adapter);
 
-        stringRequest = new StringRequest("1.2.3.4.68500", new Response.Listener<String>() {
+                    //set CameraOption
+                    binding.camera.setLifecycleOwner(MainActivity.this);
+                    CameraLogger.setLogLevel(CameraLogger.LEVEL_VERBOSE);
+                    binding.camera.setPictureFormat(PictureFormat.JPEG);
+                    binding.camera.setVideoMaxDuration(6000);
+
+                    //Events Of Camera
+                    binding.camera.addCameraListener(new CameraListener() {
+                        @Override
+                        public void onCameraError(@NonNull CameraException exception) {
+                            super.onCameraError(exception);
+                            Log.e(TAG,"Got CameraException #" + exception.getReason());
+                        }
+
+                        @Override
+                        public void onExposureCorrectionChanged(float newValue, @NonNull float[] bounds, @Nullable PointF[] fingers) {
+                            super.onExposureCorrectionChanged(newValue, bounds, fingers);
+                            message("Exposure correction:$newValue", false);
+                        }
+
+                        @Override
+                        public void onPictureTaken(@NonNull PictureResult result) {
+                            super.onPictureTaken(result);
+                            Log.e(TAG, "onPictureTaken");
+                            if(binding.camera.isTakingVideo()){
+                                message("Captured while taking video. Size=" + result.getSize(), false);
+                                return;
+                            }
+
+                            File picDir = new File(path + File.separator, System.currentTimeMillis() + pic_Format);
+                            result.toFile(picDir, file -> {});
+
+                            Bitmap bitmap;
+                            result.toBitmap(3200, 3200, bmp -> {
+                                adapter.addItem(bmp);
+                                uploadImage(getImageString(bmp));
+                            });
+                        }
+
+                        @Override
+                        public void onVideoTaken(@NonNull VideoResult result) {
+                            super.onVideoTaken(result);
+                            Log.e(TAG, "onVideoTaken");
+                            if(binding.camera.isTakingPicture()){
+                                return;
+                            }
+                        }
+
+                        @Override
+                        public void onOrientationChanged(int orientation) {
+                            super.onOrientationChanged(orientation);
+                        }
+
+                        @Override
+                        public void onZoomChanged(float newValue, @NonNull float[] bounds, @Nullable PointF[] fingers) {
+                            super.onZoomChanged(newValue, bounds, fingers);
+                        }
+
+                        @Override
+                        public void onVideoRecordingStart() {
+                            super.onVideoRecordingStart();
+                            Log.e(TAG, "onVideoRecordingStart");
+                        }
+
+                        @Override
+                        public void onVideoRecordingEnd() {
+                            super.onVideoRecordingEnd();
+                            Log.e(TAG, "onVideoRecordingEnd");
+                            message("Video taken. Processing...", false);
+                        }
+                    });
+                } else{
+                    multiplePermissionsReport.getDeniedPermissionResponses();
+                }
+            }
+
+            @Override
+            public void onPermissionRationaleShouldBeShown(List<PermissionRequest> list, PermissionToken permissionToken) {
+
+            }
+        }).check();
+    }
+
+    private void uploadImage(String imageString) {
+        binding.pgUpload.setVisibility(View.VISIBLE);
+        StringRequest stringRequest = new StringRequest(Request.Method.POST,
+                UPLOAD_URL, new Response.Listener<String>() {
             @Override
             public void onResponse(String response) {
                 Log.e(TAG, "onResponse: " + response);
+                binding.pgUpload.setVisibility(View.INVISIBLE);
             }
         }, new Response.ErrorListener() {
             @Override
             public void onErrorResponse(VolleyError error) {
-                Log.e(TAG, "onErrorResponse: " + error.toString());
+                Log.e(TAG, "onErrorResponse: " + error.getMessage().toString());
+                binding.pgUpload.setVisibility(View.INVISIBLE);
             }
-        });
+        }) {
+            @Override
+            protected Map<String, String> getParams() throws AuthFailureError {
+                Map<String, String> para = new HashMap<String, String>();
+                para.put("image", imageString);
+                return para;
+            }
+        };
         stringRequest.setTag(TAG);
-        stringRequest.setRetryPolicy(new DefaultRetryPolicy(1000, 3, 2));
-        requestQueue = Volley.newRequestQueue(this);
+
+        RequestQueue requestQueue = Volley.newRequestQueue(MainActivity.this);
         requestQueue.add(stringRequest);
-
-        //set CameraOption
-        CameraLogger.setLogLevel(CameraLogger.LEVEL_VERBOSE);
-        binding.camera.setLifecycleOwner(this);
-        binding.camera.setPictureFormat(PictureFormat.JPEG);
-        binding.camera.setVideoMaxDuration(6000);
-
-        //Events Of Camera
-        binding.camera.addCameraListener(new CameraListener() {
-            @Override
-            public void onCameraError(@NonNull CameraException exception) {
-                super.onCameraError(exception);
-                Log.e(TAG,"Got CameraException #" + exception.getReason());
-            }
-
-            @Override
-            public void onExposureCorrectionChanged(float newValue, @NonNull float[] bounds, @Nullable PointF[] fingers) {
-                super.onExposureCorrectionChanged(newValue, bounds, fingers);
-                message("Exposure correction:$newValue", false);
-            }
-
-            @Override
-            public void onPictureTaken(@NonNull PictureResult result) {
-                super.onPictureTaken(result);
-                Log.e(TAG, "onPictureTaken");
-                if(binding.camera.isTakingVideo()){
-                    message("Captured while taking video. Size=" + result.getSize(), false);
-                    return;
-                }
-
-                File picDir = new File(path + File.separator, System.currentTimeMillis() + pic_Format);
-                result.toFile(picDir, file -> {});
-
-                result.toBitmap(3200, 3200, bmp -> {
-                    adapter.addItem(bmp);
-                });
-            }
-
-            @Override
-            public void onVideoTaken(@NonNull VideoResult result) {
-                super.onVideoTaken(result);
-                Log.e(TAG, "onVideoTaken");
-                if(binding.camera.isTakingPicture()){
-                    return;
-                }
-            }
-
-            @Override
-            public void onOrientationChanged(int orientation) {
-                super.onOrientationChanged(orientation);
-            }
-
-            @Override
-            public void onZoomChanged(float newValue, @NonNull float[] bounds, @Nullable PointF[] fingers) {
-                super.onZoomChanged(newValue, bounds, fingers);
-            }
-
-            @Override
-            public void onVideoRecordingStart() {
-                super.onVideoRecordingStart();
-                Log.e(TAG, "onVideoRecordingStart");
-            }
-
-            @Override
-            public void onVideoRecordingEnd() {
-                super.onVideoRecordingEnd();
-                Log.e(TAG, "onVideoRecordingEnd");
-                message("Video taken. Processing...", false);
-            }
-        });
-    }
-
-    @Override
-    protected void onStop() {
-        super.onStop();
-        requestQueue.cancelAll(TAG);
+        requestQueue.start();
     }
 
     private void message(String content, boolean important){
@@ -409,57 +444,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 //        camera.takeVideo(videoDir);
     }
 
-    private final Runnable scaleUpAnimation = new Runnable() {
-        @Override
-        public void run() {
-            ObjectAnimator scaleDownX = ObjectAnimator.ofFloat(binding.btnCapture, "scaleX", 1f);
-            ObjectAnimator scaleDownY = ObjectAnimator.ofFloat(binding.btnCapture, "scaleY", 1f);
-            scaleDownX.setDuration(100);
-            scaleDownY.setDuration(100);
-            AnimatorSet scaleDown = new AnimatorSet();
-            scaleDown.play(scaleDownX).with(scaleDownY);
-
-            scaleDownX.addUpdateListener(valueAnimator -> {
-                View p = (View) binding.btnCapture.getParent();
-                p.invalidate();
-            });
-            scaleDown.start();
-        }
-    };
-
-    private final Runnable scaleDownAnimation = new Runnable() {
-        @Override
-        public void run() {
-            Object target;
-            ObjectAnimator scaleDownX = ObjectAnimator.ofFloat(binding.camera, "scaleX", 1f);
-            ObjectAnimator scaleDownY = ObjectAnimator.ofFloat(binding.camera, "scaleY", 1f);
-            scaleDownX.setDuration(100);
-            scaleDownY.setDuration(100);
-            AnimatorSet scaleDown = new AnimatorSet();
-            scaleDown.play(scaleDownX).with(scaleDownY);
-
-            scaleDownX.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
-                @Override
-                public void onAnimationUpdate(ValueAnimator valueAnimator) {
-                    View p = (View) binding.camera.getParent();
-                    p.invalidate();
-                }
-            });
-            scaleDown.start();
-        }
-    };
-
-    private void allPermissionGranted(int requestCode, String[] REQUIRED_PERMISSIONS) {
-        for(String permission : REQUIRED_PERMISSIONS){
-            if(ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED){
-                ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS);
-            } else{
-                try {
-                    binding.camera.open();
-                } catch (Exception e){
-                    Log.e(TAG, "allPermissionGranted");
-                }
-            }
-        }
+    public String getImageString(Bitmap bmp){
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        bmp.compress(Bitmap.CompressFormat.JPEG, 100, baos);
+        String encodeString = Base64.getEncoder().encodeToString(baos.toByteArray());
+        return encodeString;
     }
 }
