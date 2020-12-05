@@ -73,16 +73,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private Animation anim_Rotate_Front, anim_Rotate_Back;
 
     private String UPLOAD_URL = "1.1.1.1.9999";
-
-    private static final int REQUEST_CODE_PERMISSIONS = 786;
-    private final static String[] REQUIRED_PERMISSIONS = new String[]
-            {
-                    "android.permission.Camera",
-                    "android.permission.RECORD_AUDIO",
-                    "android.permission.WRITE_EXTERNAL_STORAGE",
-                    "android.permission.READ_EXTERNAL_STORAGE",
-            };
-
+3
     private long timeInMilliseconds = 0L,
             startTime = SystemClock.uptimeMillis(),
             updatedTime = 0L,
