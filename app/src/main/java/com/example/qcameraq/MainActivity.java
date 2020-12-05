@@ -73,7 +73,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private Animation anim_Rotate_Front, anim_Rotate_Back;
 
     private String UPLOAD_URL = "1.1.1.1.9999";
-3
+
     private long timeInMilliseconds = 0L,
             startTime = SystemClock.uptimeMillis(),
             updatedTime = 0L,
